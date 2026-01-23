@@ -6,6 +6,7 @@ use axum::{
     routing::{get, post},
 };
 use reqwest;
+use serde_json;
 use std::collections::hash_map::HashMap;
 use std::env;
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -55,20 +56,28 @@ async fn get_full_link(Path(short): Path<String>, State(state): State<AppState>)
 /// Refreshes the data
 async fn post_refresh(State(state): State<AppState>) -> StatusCode {
     match fetch_data().await {
-        Ok(res) => {
+        Some(res) => {
             // TODO: populate
+            let mut data = state.data.lock().expect("Mutex was poisoned");
+            data.clear();
+            data.extend(res);
+
             StatusCode::OK
         }
-        Err(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        None => StatusCode::INTERNAL_SERVER_ERROR,
     }
 }
 
-async fn fetch_data() -> reqwest::Result<HashMap<String, String>> {
+async fn fetch_data() -> Option<HashMap<String, String>> {
     let data_url = env::var("DATA_URL").unwrap();
-    let body = reqwest::get(data_url).await?.text().await?;
-    let res = HashMap::new();
+    let body = reqwest::get(data_url).await.ok()?.text().await.ok()?;
+    let json: serde_json::Value = serde_json::from_str(&body).ok()?;
+    let mut res = HashMap::new();
     // TODO: parse body and apply to the data
-    Ok(res)
+    for elem in json.as_object().unwrap().iter() {
+        res.insert(elem.0.to_string(), elem.1.to_string());
+    }
+    Some(res)
 }
 
 fn assert_env() {
