@@ -2,7 +2,7 @@ use axum::{
     Router,
     extract::Path,
     extract::State,
-    http::StatusCode,
+    http::{HeaderMap, HeaderName, StatusCode, header},
     routing::{get, post},
 };
 use reqwest;
@@ -48,16 +48,25 @@ async fn get_root(State(state): State<AppState>) -> String {
     String::from("<h1>linkshort<h1><span>Public link directory coming soon!</span>")
 }
 
-async fn get_full_link(Path(short): Path<String>, State(state): State<AppState>) -> String {
-    // TODO: get full link from state
-    String::from("HI")
+async fn get_full_link(
+    Path(short): Path<String>,
+    State(state): State<AppState>,
+) -> (StatusCode, HeaderMap) {
+    let data = state.data.lock().expect("Mutex was poisoned");
+    match data.get(&short) {
+        Some(full_url) => {
+            let mut headers = HeaderMap::new();
+            headers.insert(header::LOCATION, full_url.parse().unwrap());
+            (StatusCode::MOVED_PERMANENTLY, headers)
+        }
+        None => (StatusCode::NOT_FOUND, HeaderMap::new()),
+    }
 }
 
 /// Refreshes the data
 async fn post_refresh(State(state): State<AppState>) -> StatusCode {
     match fetch_data().await {
         Some(res) => {
-            // TODO: populate
             let mut data = state.data.lock().expect("Mutex was poisoned");
             data.clear();
             data.extend(res);
