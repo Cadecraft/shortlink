@@ -2,15 +2,12 @@ use axum::{
     Router,
     extract::Path,
     extract::State,
-    http::{HeaderMap, HeaderName, StatusCode, header},
+    http::{HeaderMap, StatusCode, header},
     routing::{get, post},
 };
-use reqwest;
-use serde_json;
 use std::collections::hash_map::HashMap;
 use std::env;
-use std::sync::{Arc, Mutex, MutexGuard};
-use tokio;
+use std::sync::{Arc, Mutex};
 
 #[tokio::main]
 async fn main() {
@@ -42,10 +39,9 @@ async fn main() {
     axum::serve(listener, app).await.unwrap();
 }
 
-/// Root renders an HTML file showing all available links
-async fn get_root(State(state): State<AppState>) -> String {
-    // TODO: get full link
-    String::from("<h1>linkshort<h1><span>Public link directory coming soon!</span>")
+async fn get_root() -> String {
+    // TODO: in the future, server-side render HTML showing all available public links
+    String::from("Welcome to linkshort\n\nPublic link directory coming soon!")
 }
 
 async fn get_full_link(
@@ -82,7 +78,6 @@ async fn fetch_data() -> Option<HashMap<String, String>> {
     let body = reqwest::get(data_url).await.ok()?.text().await.ok()?;
     let json: serde_json::Value = serde_json::from_str(&body).ok()?;
     let mut res = HashMap::new();
-    // TODO: parse body and apply to the data
     for elem in json.as_object().unwrap().iter() {
         res.insert(elem.0.to_string(), elem.1.to_string());
     }
@@ -92,7 +87,7 @@ async fn fetch_data() -> Option<HashMap<String, String>> {
 fn assert_env() {
     let needed = ["HOST", "PORT", "DATA_URL"];
     for var in needed {
-        env::var(var).expect(&format!("{} must be provided", var));
+        env::var(var).unwrap_or_else(|_| panic!("{} must be provided", var));
     }
 }
 
