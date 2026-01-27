@@ -9,13 +9,15 @@ use std::collections::hash_map::HashMap;
 use std::env;
 use std::sync::{Arc, Mutex};
 
+mod fetch_data;
+
 #[tokio::main]
 async fn main() {
     let _ = dotenvy::dotenv();
     assert_env();
 
     println!("Fetching initial data...");
-    let data = fetch_data()
+    let data = fetch_data::fetch()
         .await
         .expect("Could not fetch initial data from DATA_URL");
 
@@ -41,7 +43,9 @@ async fn main() {
 
 async fn get_root() -> String {
     // TODO: in the future, server-side render HTML showing all available public links
-    String::from("Welcome to linkshort\n\nPublic link directory coming soon!")
+    String::from(
+        "Welcome to shortlink (https://github.com/Cadecraft/shortlink)\n\nPublic link directory coming soon!",
+    )
 }
 
 async fn get_full_link(
@@ -61,7 +65,7 @@ async fn get_full_link(
 
 /// Refreshes the data
 async fn post_refresh(State(state): State<AppState>) -> StatusCode {
-    match fetch_data().await {
+    match fetch_data::fetch().await {
         Some(res) => {
             let mut data = state.data.lock().expect("Mutex was poisoned");
             data.clear();
@@ -71,17 +75,6 @@ async fn post_refresh(State(state): State<AppState>) -> StatusCode {
         }
         None => StatusCode::INTERNAL_SERVER_ERROR,
     }
-}
-
-async fn fetch_data() -> Option<HashMap<String, String>> {
-    let data_url = env::var("DATA_URL").unwrap();
-    let body = reqwest::get(data_url).await.ok()?.text().await.ok()?;
-    let json: serde_json::Value = serde_json::from_str(&body).ok()?;
-    let mut res = HashMap::new();
-    for elem in json.as_object().unwrap().iter() {
-        res.insert(elem.0.to_string(), elem.1.to_string());
-    }
-    Some(res)
 }
 
 fn assert_env() {
