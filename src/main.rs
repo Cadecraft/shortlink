@@ -5,9 +5,10 @@ use axum::{
     http::{HeaderMap, StatusCode, header},
     routing::{get, post},
 };
+use dashmap::DashMap;
 use std::collections::hash_map::HashMap;
 use std::env;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 mod fetch_data;
 
@@ -21,8 +22,11 @@ async fn main() {
         .await
         .expect("Could not fetch initial data from DATA_URL");
 
+    let initial_cache = DashMap::new();
+    overwrite_dashmap(&initial_cache, &data);
+
     let state = AppState {
-        data: Arc::new(Mutex::new(data)),
+        data: Arc::new(initial_cache),
     };
 
     let app = Router::new()
@@ -52,8 +56,7 @@ async fn get_full_link(
     Path(short): Path<String>,
     State(state): State<AppState>,
 ) -> (StatusCode, HeaderMap) {
-    let data = state.data.lock().expect("Mutex was poisoned");
-    match data.get(&short) {
+    match state.data.get(&short) {
         Some(full_url) => {
             let mut headers = HeaderMap::new();
             headers.insert(header::LOCATION, full_url.parse().unwrap());
@@ -67,10 +70,7 @@ async fn get_full_link(
 async fn post_refresh(State(state): State<AppState>) -> StatusCode {
     match fetch_data::fetch().await {
         Some(res) => {
-            let mut data = state.data.lock().expect("Mutex was poisoned");
-            data.clear();
-            data.extend(res);
-
+            overwrite_dashmap(&state.data, &res);
             StatusCode::OK
         }
         None => StatusCode::INTERNAL_SERVER_ERROR,
@@ -84,7 +84,14 @@ fn assert_env() {
     }
 }
 
+fn overwrite_dashmap(data: &DashMap<String, String>, new_values: &HashMap<String, String>) {
+    data.clear();
+    new_values.iter().for_each(|(k, v)| {
+        data.insert(k.to_string(), v.to_string());
+    });
+}
+
 #[derive(Clone)]
 struct AppState {
-    data: Arc<Mutex<HashMap<String, String>>>,
+    data: Arc<DashMap<String, String>>,
 }
